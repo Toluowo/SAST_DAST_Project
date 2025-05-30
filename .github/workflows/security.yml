@@ -8,6 +8,7 @@ on:
 
 jobs:
   sast:
+    name: Static Application Security Testing (SAST)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -17,7 +18,7 @@ jobs:
         with:
           node-version: '14'
 
-      - name: npm Install
+      - name: Install dependencies
         working-directory: ./NodeGoat
         run: npm install
 
@@ -38,56 +39,36 @@ jobs:
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
   dast:
+    name: Dynamic Application Security Testing (DAST)
     needs: sast
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
-      # Build NodeGoat image from the code that’s already in your repo
-      - name: Build NodeGoat image
-        run: docker build -t custom-nodegoat ./NodeGoat
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '14'
 
-      # Network so ZAP can “see” NodeGoat by container name
-      - name: Create docker network
-        run: docker network create zap-net || true
+      - name: Install NodeGoat dependencies
+        working-directory: ./NodeGoat
+        run: npm install
 
-      # Start NodeGoat container on that network
-      - name: Run NodeGoat
+      - name: Start NodeGoat app
+        working-directory: ./NodeGoat
         run: |
-          docker run -d --rm \
-            --name nodegoat \
-            --network zap-net \
-            -p 4000:4000 \
-            custom-nodegoat
+          npm start &
+          sleep 30  # give app time to initialize
 
-      # Give the app a moment (or replace with a health-check loop if you prefer)
-      - name: Wait for NodeGoat to be ready
-        run: sleep 40
-
-      # Prepare a writable directory for ZAP output
-      - name: Prepare zap output dir
-        run: |
-          mkdir -p zap-out
-          chmod 777 zap-out       # ensures container can write
-
-      # Run ZAP Baseline scan
-      - name: Run ZAP Baseline scan
+      - name: Run ZAP Baseline Scan
         run: |
           docker pull ghcr.io/zaproxy/zaproxy:stable
-          docker run --rm -v $(pwd):/zap/wrk/:rw ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
-            -t http://localhost:4000 -r zap-report.html
+          docker run --network="host" -v $(pwd):/zap/wrk/:rw ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://localhost:4000 -r zap-report.html || true
 
-    #      docker run --rm \
-     #       --user root \                       # ⬅ container can now write
-      #      --network zap-net \
-       #     -v ${{ github.workspace }}/zap-out:/zap/wrk/:rw \
-        #    ghcr.io/zaproxy/zaproxy:stable \
-         #     zap-baseline.py -t http://nodegoat:4000 -r zap-report.html
-
-      # Upload the generated report
       - name: Upload ZAP Report
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
-          path: zap-out/zap-report.html
+          path: zap-report.html
 
