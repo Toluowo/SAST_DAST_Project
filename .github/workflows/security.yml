@@ -2,9 +2,9 @@ name: Security Scans
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   sast:
@@ -17,10 +17,9 @@ jobs:
         with:
           node-version: '14'
 
-      - name: npm Install
+      - name: npm install
         working-directory: ./NodeGoat
-        run: |
-          npm install
+        run: npm install
 
       - name: Install SonarScanner
         run: npm install -g sonar-scanner
@@ -42,34 +41,35 @@ jobs:
     needs: sast
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '14'
+      - name: Create output directory
+        run: mkdir -p zap-wrk
 
-      - name: Install dependencies
-        working-directory: ./NodeGoat
-        run: npm install
+      - name: Create Docker network
+        run: docker network create zap-net
 
-      - name: Start NodeGoat App
-        working-directory: ./NodeGoat
+      - name: Start NodeGoat app
         run: |
-          npm start &
-          echo "Waiting for app to be ready..."
-          sleep 60
+          docker run -d --name nodegoat \
+            --network zap-net \
+            -p 4000:4000 \
+            ghcr.io/appsecco/nodegoat
 
-      - name: Run ZAP Scan
+      - name: Wait for app to start
+        run: sleep 30
+
+      - name: Run ZAP scan
         run: |
-          docker pull ghcr.io/zaproxy/zaproxy:stable
-          docker run -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t http://host.docker.internal:4000 -r zap-report.html || true
+          docker run --rm \
+            --network zap-net \
+            -v ${{ github.workspace }}/zap-wrk:/zap/wrk/:rw \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://nodegoat:4000 -r zap-report.html
 
       - name: Upload ZAP Report
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
-          path: zap-report.html
+          path: zap-wrk/zap-report.html
 
