@@ -39,35 +39,37 @@ jobs:
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
   dast:
-    needs: sast
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+  needs: sast
+  runs-on: ubuntu-latest
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v3
 
-      - name: Create Docker network
-        run: docker network create zap-net
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '14'
 
-      - name: Start NodeGoat container
-        run: |
-          docker run -d --name nodegoat --network zap-net -p 4000:4000 ghcr.io/owasp/nodegoat
+    - name: Install dependencies
+      working-directory: ./NodeGoat
+      run: npm install
 
-      - name: Wait for app to be ready
-        run: sleep 30
+    - name: Start NodeGoat App
+      working-directory: ./NodeGoat
+      run: |
+        npm start &
+        echo "Waiting for app to be ready..."
+        sleep 60
 
-      - name: Create output directory
-        run: mkdir -p zap-output
+    - name: Run ZAP Scan
+      run: |
+        docker pull ghcr.io/zaproxy/zaproxy:stable
+        docker run -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable \
+          zap-baseline.py -t http://host.docker.internal:4000 -r zap-report.html || true
 
-      - name: Run ZAP Baseline Scan
-        run: |
-          docker run --network zap-net \
-            -v $(pwd)/zap-output:/zap/wrk/:rw \
-            ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t http://nodegoat:4000 -r zap-report.html || true
-
-      - name: Upload ZAP Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-report
-          path: zap-output/zap-report.html
+    - name: Upload ZAP Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: zap-report
+        path: zap-report.html
 
