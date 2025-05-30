@@ -50,7 +50,7 @@ jobs:
 
       - name: Start NodeGoat container
         run: |
-          docker run -d --name nodegoat --network zap-net -p 4000:4000 owasp/nodegoat
+          docker run -d --name nodegoat --network zap-net -p 4000:4000 bkimminich/nodegoat
 
       - name: Wait for app to be ready
         run: sleep 30
