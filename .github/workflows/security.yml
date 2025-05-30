@@ -17,14 +17,17 @@ jobs:
        with:
          node-version: '14'
 
-     - name: Install and build
+     - name: npm Install
        working-directory: ./NodeGoat
        run: |
          npm install
 
-     - name: Run SonarQube scan
-       working-directory: ./NodeGoat
+     - name: Install SonarScanner
+       run: |
+         npm install -g sonar-scanner
 
+     - name: Run SonarScanner
+       working-directory: ./NodeGoat
        env:
          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
        run: |
@@ -32,6 +35,7 @@ jobs:
           -Dsonar.organization=Tolu_Owolabi_Organization \
           -Dsonar.projectKey=sast-dast-project \
           -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
   dast:
    needs: sast
