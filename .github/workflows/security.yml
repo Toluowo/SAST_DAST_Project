@@ -19,12 +19,10 @@ jobs:
 
       - name: npm Install
         working-directory: ./NodeGoat
-        run: |
-          npm install
+        run: npm install
 
       - name: Install SonarScanner
-        run: |
-          npm install -g sonar-scanner
+        run: npm install -g sonar-scanner
 
       - name: Run SonarScanner
         working-directory: ./NodeGoat
@@ -45,27 +43,32 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Clone NodeGoat repo
-        run: |
-          git clone https://github.com/OWASP/NodeGoat.git
-
       - name: Build NodeGoat Docker image
         run: |
-          docker build -t nodegoat ./NodeGoat
+          docker build -t custom-nodegoat ./NodeGoat
+
+      - name: Create Docker network
+        run: docker network create zap-net || true
 
       - name: Run NodeGoat container
         run: |
-          docker network create zap-net || true
-          docker run -d --name nodegoat --network zap-net -p 4000:4000 nodegoat
-          sleep 60
+          docker run -d --rm --name nodegoat --network zap-net -p 4000:4000 custom-nodegoat
+
+      - name: Wait for NodeGoat to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:4000 >/dev/null; then
+              echo 'NodeGoat is up!'
+              break
+            fi
+            echo "Waiting for NodeGoat..."
+            sleep 2
+          done
 
       - name: Run ZAP Scan
         run: |
           docker pull ghcr.io/zaproxy/zaproxy:stable
-          docker run --network zap-net -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable \
+          docker run --rm --network zap-net -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t http://nodegoat:4000 -r zap-report.html
 
       - name: Upload ZAP Report
@@ -73,11 +76,4 @@ jobs:
         with:
           name: zap-report
           path: zap-report.html
-
-      - name: Cleanup NodeGoat container
-        if: always()
-        run: |
-          docker stop nodegoat || true
-          docker rm nodegoat || true
-          docker network rm zap-net || true
 
