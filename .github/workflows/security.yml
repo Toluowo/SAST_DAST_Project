@@ -43,37 +43,48 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Build NodeGoat Docker image
-        run: |
-          docker build -t custom-nodegoat ./NodeGoat
+      # Build NodeGoat image from the code that’s already in your repo
+      - name: Build NodeGoat image
+        run: docker build -t custom-nodegoat ./NodeGoat
 
-      - name: Create Docker network
+      # Network so ZAP can “see” NodeGoat by container name
+      - name: Create docker network
         run: docker network create zap-net || true
 
-      - name: Run NodeGoat container
+      # Start NodeGoat container on that network
+      - name: Run NodeGoat
         run: |
-          docker run -d --rm --name nodegoat --network zap-net -p 4000:4000 custom-nodegoat
+          docker run -d --rm \
+            --name nodegoat \
+            --network zap-net \
+            -p 4000:4000 \
+            custom-nodegoat
 
+      # Give the app a moment (or replace with a health-check loop if you prefer)
       - name: Wait for NodeGoat to be ready
-        run: |
-          for i in {1..30}; do
-            if curl -s http://localhost:4000 >/dev/null; then
-              echo 'NodeGoat is up!'
-              break
-            fi
-            echo "Waiting for NodeGoat..."
-            sleep 2
-          done
+        run: sleep 40
 
-      - name: Run ZAP Scan
+      # Prepare a writable directory for ZAP output
+      - name: Prepare zap output dir
+        run: |
+          mkdir -p zap-out
+          chmod 777 zap-out       # ensures container can write
+
+      # Run ZAP Baseline scan
+      - name: Run ZAP Baseline scan
         run: |
           docker pull ghcr.io/zaproxy/zaproxy:stable
-          docker run --rm --network zap-net -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t http://nodegoat:4000 -r zap-report.html
+          docker run --rm \
+            --user root \                       # ⬅ container can now write
+            --network zap-net \
+            -v ${{ github.workspace }}/zap-out:/zap/wrk/:rw \
+            ghcr.io/zaproxy/zaproxy:stable \
+              zap-baseline.py -t http://nodegoat:4000 -r zap-report.html
 
+      # Upload the generated report
       - name: Upload ZAP Report
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
-          path: zap-report.html
+          path: zap-out/zap-report.html
 
