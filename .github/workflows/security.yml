@@ -32,7 +32,7 @@ jobs:
          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
        run: |
          sonar-scanner \
-          -Dsonar.organization=Tolu_Owolabi_Organization \
+          -Dsonar.organization=https://sonarcloud.io/organizations/sast-dast-project \
           -Dsonar.projectKey=Toluowo_SAST_DAST_Project \
           -Dsonar.projectName=SAST_DAST_Project \
           -Dsonar.branch.name=main \
