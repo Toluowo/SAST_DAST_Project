@@ -58,11 +58,10 @@ jobs:
      - name: Run ZAP Scan
        run: |
          docker pull ghcr.io/zaproxy/zaproxy:stable
-         docker run \
-           -v $(pwd):/zap/wrk/:rw \
-           --user root \  # Ensures write access inside container
-           ghcr.io/zaproxy/zaproxy:stable \
-           zap-baseline.py -t http://host.docker.internal:4000 -r zap-report.html
+         docker run --user root \
+            -v $(pwd):/zap/wrk/:rw \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://host.docker.internal:4000 -r zap-report.html
 
      - name: Upload ZAP Report
        uses: actions/upload-artifact@v4
