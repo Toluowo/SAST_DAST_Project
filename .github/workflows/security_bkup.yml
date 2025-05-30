@@ -1,0 +1,93 @@
+name: Security Scans
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  sast:
+   runs-on: ubuntu-latest
+   steps:
+     - uses: actions/checkout@v3
+
+     - name: Set up Node.js
+       uses: actions/setup-node@v3
+       with:
+         node-version: '14'
+
+     - name: npm Install
+       working-directory: ./NodeGoat
+       run: |
+         npm install
+
+     - name: Install SonarScanner
+       run: |
+         npm install -g sonar-scanner
+
+     - name: Run SonarScanner
+       working-directory: ./NodeGoat
+       env:
+         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+       run: |
+         sonar-scanner \
+          -Dsonar.organization=sast-dast-project \
+          -Dsonar.projectKey=Toluowo_SAST_DAST_Project \
+          -Dsonar.projectName=SAST_DAST_Project \
+          -Dsonar.branch.name=main \
+          -Dsonar.host.url=https://sonarcloud.io \
+          -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+
+  dast:
+   needs: sast
+   runs-on: ubuntu-latest
+   services:
+     mongo:
+       image: mongo:4.2
+       ports:
+         - 27017:27017
+       options: >-
+         --health-cmd="mongo --eval 'db.runCommand({ ping: 1 })'"
+         --health-interval=10s
+         --health-timeout=5s
+         --health-retries=5
+#   if: contains(github.event.pull_request.labels.*.name, 'dast-scan')
+   steps:
+     - name: Checkout code
+       uses: actions/checkout@v4
+
+     - name: Set up Node.js app and environment
+       run: |
+         cd NodeGoat
+         npm install
+
+         echo "Waiting 20s for MongoDB to be fully ready..."
+         sleep 20
+
+         npm start & # start app in the background
+
+         # Wait for the app to become reachable
+         echo "Waiting for app to start on http://localhost:4000 ..."
+         until curl -s http://localhost:4000 > /dev/null; do
+           echo "App not ready yet. Retrying in 2s..."
+           sleep 2
+         done
+         echo "App is up and running."
+
+     - name: Run ZAP Scan
+       run: |
+        docker run -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable \
+          zap-baseline.py -t http://localhost:4000 -r zap-report.html || true
+         #docker pull ghcr.io/zaproxy/zaproxy:stable
+         #docker run --network="host" --user root \
+          #  -v $(pwd):/zap/wrk/:rw \
+          #  ghcr.io/zaproxy/zaproxy:stable \
+          #  zap-baseline.py -t http://localhost:4000 -r zap-report.html
+
+     - name: Upload ZAP Report
+       uses: actions/upload-artifact@v4
+       with:
+         name: zap-report
+         path: zap-report.html

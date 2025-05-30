@@ -1,0 +1,75 @@
+name: Security Scans
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '14'
+
+      - name: npm Install
+        working-directory: ./NodeGoat
+        run: |
+          npm install
+
+      - name: Install SonarScanner
+        run: npm install -g sonar-scanner
+
+      - name: Run SonarScanner
+        working-directory: ./NodeGoat
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          sonar-scanner \
+            -Dsonar.organization=sast-dast-project \
+            -Dsonar.projectKey=Toluowo_SAST_DAST_Project \
+            -Dsonar.projectName=SAST_DAST_Project \
+            -Dsonar.branch.name=main \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+  dast:
+    needs: sast
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '14'
+
+      - name: Install dependencies
+        working-directory: ./NodeGoat
+        run: npm install
+
+      - name: Start NodeGoat App
+        working-directory: ./NodeGoat
+        run: |
+          npm start &
+          echo "Waiting for app to be ready..."
+          sleep 60
+
+      - name: Run ZAP Scan
+        run: |
+          docker pull ghcr.io/zaproxy/zaproxy:stable
+          docker run -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://host.docker.internal:4000 -r zap-report.html || true
+
+      - name: Upload ZAP Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: zap-report.html
+
