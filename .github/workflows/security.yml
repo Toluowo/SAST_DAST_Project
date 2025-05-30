@@ -1,0 +1,58 @@
+name: Security Scans
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  sast:
+   runs-on: ubuntu-latest
+   steps:
+     - uses: actions/checkout@v3
+
+     - name: Set up Node.js
+       uses: actions/setup-node@v3
+       with:
+         node-version: '14'
+
+     - name: Install and build
+       working-directory: ./NodeGoat
+       run: |
+         npm install
+         npm run build
+
+     - name: Run SonarQube scan
+       working-directory: ./NodeGoat
+       env:
+         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+       run: |
+         npx sonar-scanner -Dsonar.projectKey=homelab-app
+
+  dast:
+   needs: sast
+   runs-on: ubuntu-latest
+   steps:
+   - uses: actions/checkout@v3
+
+   - name: Set up Node.js environment
+     if: contains(github.event.pull_request.labels.*.name, 'dast-scan')
+     run: |
+       cd NodeGoat
+       npm install
+       npm start &
+       sleep 60
+
+   - name: Run ZAP Scan
+     run: |
+       docker pull ghcr.io/zaproxy/zaproxy:stable
+       docker run -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable \
+         zap-baseline.py -t http://localhost:4000 -r zap-report.html
+
+   - name: Upload ZAP Report
+     uses: actions/upload-artifact@v3
+     with:
+       name: zap-report
+       path: zap-report.html
