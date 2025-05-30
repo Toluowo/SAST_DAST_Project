@@ -2,9 +2,9 @@ name: Security Scans
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   sast:
@@ -17,12 +17,14 @@ jobs:
         with:
           node-version: '14'
 
-      - name: npm install
+      - name: npm Install
         working-directory: ./NodeGoat
-        run: npm install
+        run: |
+          npm install
 
       - name: Install SonarScanner
-        run: npm install -g sonar-scanner
+        run: |
+          npm install -g sonar-scanner
 
       - name: Run SonarScanner
         working-directory: ./NodeGoat
@@ -43,33 +45,39 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Create output directory
-        run: mkdir -p zap-wrk
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
-      - name: Create Docker network
-        run: docker network create zap-net
-
-      - name: Start NodeGoat app
+      - name: Clone NodeGoat repo
         run: |
-          docker run -d --name nodegoat \
-            --network zap-net \
-            -p 4000:4000 \
-            ghcr.io/appsecco/nodegoat
+          git clone https://github.com/OWASP/NodeGoat.git
 
-      - name: Wait for app to start
-        run: sleep 30
-
-      - name: Run ZAP scan
+      - name: Build NodeGoat Docker image
         run: |
-          docker run --rm \
-            --network zap-net \
-            -v ${{ github.workspace }}/zap-wrk:/zap/wrk/:rw \
-            ghcr.io/zaproxy/zaproxy:stable \
+          docker build -t nodegoat ./NodeGoat
+
+      - name: Run NodeGoat container
+        run: |
+          docker network create zap-net || true
+          docker run -d --name nodegoat --network zap-net -p 4000:4000 nodegoat
+          sleep 60
+
+      - name: Run ZAP Scan
+        run: |
+          docker pull ghcr.io/zaproxy/zaproxy:stable
+          docker run --network zap-net -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py -t http://nodegoat:4000 -r zap-report.html
 
       - name: Upload ZAP Report
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
-          path: zap-wrk/zap-report.html
+          path: zap-report.html
+
+      - name: Cleanup NodeGoat container
+        if: always()
+        run: |
+          docker stop nodegoat || true
+          docker rm nodegoat || true
+          docker network rm zap-net || true
 
