@@ -43,7 +43,7 @@ jobs:
   dast:
    needs: sast
    runs-on: ubuntu-latest
-   if: contains(github.event.pull_request.labels.*.name, 'dast-scan')
+#   if: contains(github.event.pull_request.labels.*.name, 'dast-scan')
    steps:
      - name: Checkout code
        uses: actions/checkout@v3
