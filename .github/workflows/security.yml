@@ -49,7 +49,7 @@ jobs:
        ports:
          - 27017:27017
        options: >-
-         --health-cmd="mongosh --eval 'db.adminCommand(\"ping\")'"
+         --health-cmd="mongo --eval 'db.runCommand({ ping: 1 })'"
          --health-interval=10s
          --health-timeout=5s
          --health-retries=5
@@ -62,10 +62,14 @@ jobs:
        run: |
          cd NodeGoat
          npm install
+
+         echo "Waiting 20s for MongoDB to be fully ready..."
+         sleep 20
+
          npm start & # start app in the background
 
          # Wait for the app to become reachable
-         echo "Waiting for http://localhost:4000 to be available..."
+         echo "Waiting for app to start on http://localhost:4000 ..."
          until curl -s http://localhost:4000 > /dev/null; do
            echo "App not ready yet. Retrying in 2s..."
            sleep 2
