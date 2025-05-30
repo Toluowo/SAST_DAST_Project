@@ -24,11 +24,14 @@ jobs:
 
      - name: Run SonarQube scan
        working-directory: ./NodeGoat
+
        env:
          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
        run: |
-         npx sonar-scanner -Dsonar.projectKey=homelab-app
+         sonar-scanner \
+          -Dsonar.organization=Tolu_Owolabi_Organization \
+          -Dsonar.projectKey=sast-dast-project \
+          -Dsonar.host.url=https://sonarcloud.io
 
   dast:
    needs: sast
