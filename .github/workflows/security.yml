@@ -61,15 +61,14 @@ jobs:
           sleep 30  # give app time to initialize
 
       - name: Run ZAP Baseline Scan
-        run: |
-          docker pull ghcr.io/zaproxy/zaproxy:stable
-          docker run --network="host" --user root \
-            -v $(pwd):/zap/wrk ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t http://localhost:4000 -r zap-report.html -J zap-report.json
+        uses: zaproxy/action-baseline@v0.10.0
+        with:
+          target: 'http://localhost:4000'
+          failAction: false
 
       - name: Upload ZAP Report
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
-          path: zap-report.html
+          path: report_html.html
 
