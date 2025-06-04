@@ -1,0 +1,93 @@
+name: Security Scans
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '14'
+
+      - name: npm Install
+        working-directory: ./NodeGoat
+        run: npm install
+
+      - name: Install SonarScanner
+        run: npm install -g sonar-scanner
+
+      - name: Run SonarScanner
+        working-directory: ./NodeGoat
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          sonar-scanner \
+            -Dsonar.organization=sast-dast-project \
+            -Dsonar.projectKey=Toluowo_SAST_DAST_Project \
+            -Dsonar.projectName=SAST_DAST_Project \
+            -Dsonar.branch.name=main \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+  dast:
+    needs: sast
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      # Build NodeGoat image from the code that’s already in your repo
+      - name: Build NodeGoat image
+        run: docker build -t custom-nodegoat ./NodeGoat
+
+      # Network so ZAP can “see” NodeGoat by container name
+      - name: Create docker network
+        run: docker network create zap-net || true
+
+      # Start NodeGoat container on that network
+      - name: Run NodeGoat
+        run: |
+          docker run -d --rm \
+            --name nodegoat \
+            --network zap-net \
+            -p 4000:4000 \
+            custom-nodegoat
+
+      # Give the app a moment (or replace with a health-check loop if you prefer)
+      - name: Wait for NodeGoat to be ready
+        run: sleep 40
+
+      # Prepare a writable directory for ZAP output
+      - name: Prepare zap output dir
+        run: |
+          mkdir -p zap-out
+          chmod 777 zap-out       # ensures container can write
+
+      # Run ZAP Baseline scan
+      - name: Run ZAP Baseline scan
+        run: |
+          docker pull ghcr.io/zaproxy/zaproxy:stable
+          docker run --rm -v $(pwd):/zap/wrk/:rw ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+            -t http://localhost:4000 -r zap-report.html
+
+    #      docker run --rm \
+     #       --user root \                       # ⬅ container can now write
+      #      --network zap-net \
+       #     -v ${{ github.workspace }}/zap-out:/zap/wrk/:rw \
+        #    ghcr.io/zaproxy/zaproxy:stable \
+         #     zap-baseline.py -t http://nodegoat:4000 -r zap-report.html
+
+      # Upload the generated report
+      - name: Upload ZAP Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: zap-out/zap-report.html
+
